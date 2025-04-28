@@ -1,0 +1,27 @@
+$clusterName = "Nameofcluster"
+
+# Get all VMs in the cluster
+$vms = Get-Cluster -Name $clusterName | Get-VM
+
+# Filter VMs where the VM name and the folder name (on datastore) are different
+$renamedVMs = foreach ($vm in $vms) {
+    $vmView = Get-View $vm.Id
+    $config = $vmView.Config
+    $vmName = $config.Name
+    $vmPath = $config.Files.VmPathName  # Example: "[datastore1] old_vm_name/old_vm_name.vmx"
+
+    if ($vmPath -match '\[(.*?)\] (.*?)/') {
+        $folderName = $matches[2]
+
+        if ($folderName -ne $vmName) {
+            [PSCustomObject]@{
+                VMName     = $vmName
+                FolderName = $folderName
+                VMPath     = $vmPath
+            }
+        }
+    }
+}
+
+# Output result
+$renamedVMs | Format-Table -AutoSize

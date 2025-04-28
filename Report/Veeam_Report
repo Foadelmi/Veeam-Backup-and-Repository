@@ -1,0 +1,79 @@
+# Ensure the Reports folder exists
+if (!(Test-Path -Path "C:\Reports")) {
+    New-Item -Path "C:\" -Name "Reports" -ItemType "Directory"
+}
+Get-VBRJob | select name,targetdir,ScheduleOptions,IsTapeCopy | Export-Csv -Path "C:\Reports\BackupReport.csv" -NoTypeInformation
+
+# Prepare array
+$report = @()
+
+# Get all backup jobs
+$jobs = Get-VBRJob | Where-Object { $_.JobType -eq "Backup" }
+
+foreach ($job in $jobs) {
+    $jobName = $job.Name
+    $repo = ($job.FindTargetRepository()).Name
+    $retention = $job.BackupStorageOptions.RetainCycles
+
+    # Get list of VMs (objects)
+    $objects = @()
+    foreach ($object in $job.GetObjectsInJob()) {
+        switch ($object.ObjectType) {
+            "Vm"       { $objects += $object.Name }
+            "Folder"   { $objects += "Folder: $($object.Name)" }
+            "Tag"      { $objects += "Tag: $($object.Name)" }
+            "Datastore" { $objects += "Datastore: $($object.Name)" }
+            default    { $objects += "$($object.ObjectType): $($object.Name)" }
+        }
+    }
+    $vmsList = $objects -join ", "
+
+    # Determine Schedule
+    $scheduleInfo = ""
+
+    if ($job.ScheduleOptions.IsScheduleEnabled) {
+        $kind = $job.ScheduleOptions.ScheduleKind.ToString()
+
+        switch ($kind) {
+            "Daily" {
+                $time = $job.ScheduleOptions.OptionsDaily.Time.LocalTime
+                $days = @()
+                if ($job.ScheduleOptions.OptionsDaily.RunMonday)   { $days += "Monday" }
+                if ($job.ScheduleOptions.OptionsDaily.RunTuesday)  { $days += "Tuesday" }
+                if ($job.ScheduleOptions.OptionsDaily.RunWednesday){ $days += "Wednesday" }
+                if ($job.ScheduleOptions.OptionsDaily.RunThursday) { $days += "Thursday" }
+                if ($job.ScheduleOptions.OptionsDaily.RunFriday)   { $days += "Friday" }
+                if ($job.ScheduleOptions.OptionsDaily.RunSaturday) { $days += "Saturday" }
+                if ($job.ScheduleOptions.OptionsDaily.RunSunday)   { $days += "Sunday" }
+                $scheduleInfo = "Daily at $($time) on " + ($days -join ", ")
+            }
+            "Periodically" {
+                $minutes = $job.ScheduleOptions.RepeatMinutes
+                $scheduleInfo = "Every $minutes minutes"
+            }
+            "Monthly" {
+                $day = $job.ScheduleOptions.OptionsMonthly.DayNumberInMonth
+                $time = $job.ScheduleOptions.OptionsMonthly.Time.LocalTime
+                $scheduleInfo = "Monthly on day $day at $time"
+            }
+            default {
+                $scheduleInfo = "Custom/Complex Schedule"
+            }
+        }
+    }
+    else {
+        $scheduleInfo = "Manual (No Schedule)"
+    }
+
+    # Add to report
+    $report += [PSCustomObject]@{
+        JobName         = $jobName
+        RepositoryName  = $repo
+        RetentionPolicy = "$retention Restore Points"
+        VirtualMachines = $vmsList
+        Schedule        = $scheduleInfo
+    }
+}
+
+# Export
+$report | Export-Csv -Path "C:\Reports\FullBackupJobReport.csv" -NoTypeInformation -Encoding UTF8

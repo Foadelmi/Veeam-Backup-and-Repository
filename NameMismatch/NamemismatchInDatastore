@@ -1,3 +1,4 @@
+Install-Module -Name VMware.PowerCLI -Scope CurrentUser -Force; Import-Module VMware.PowerCLI; Connect-VIServer -Server "vcenter.yourdomain.local" -User "administrator@vsphere.local" -Password "YourPassword"
 
 #this script distinguish the name conflict between vm name and its folder name in datastore (when renaming the vm and not the folder and files in it)
 
